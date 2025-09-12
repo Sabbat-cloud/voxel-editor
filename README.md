@@ -93,4 +93,3 @@ This project has a solid foundation. Here are some ideas for future improvements
 -   **Performance Optimization:** Implement `InstancedMesh` to drastically improve rendering performance with a large number of voxels.
 -   **Advanced Tools:** Add more powerful building tools like "line", "box", and "paint bucket (fill)".
 -   **Customizable Color Palette:** Allow users to add, edit, and save their own color palettes.
--   **Voxel Preview:** Show a semi-transparent "ghost" cube to preview where a new voxel will be placed.

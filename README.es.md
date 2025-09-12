@@ -93,7 +93,6 @@ Este proyecto tiene una base muy sólida. Aquí hay algunas ideas para futuras m
 -   **Optimización de Rendimiento:** Implementar `InstancedMesh` para mejorar drásticamente el rendimiento del renderizado con un gran número de vóxeles.
 -   **Herramientas Avanzadas:** Añadir herramientas de construcción más potentes como "línea", "caja" y "bote de pintura (relleno)".
 -   **Paleta de Colores Personalizable:** Permitir a los usuarios añadir, editar y guardar sus propias paletas de colores.
--   **Previsualización de Vóxel:** Mostrar un "cubo fantasma" semitransparente para previsualizar dónde se colocará un nuevo vóxel.
 -   **Mejoras de UI/UX:** Pulir la interfaz de usuario para una experiencia más profesional.
 
 ---
