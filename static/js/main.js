@@ -35,49 +35,34 @@ let gridHelper, axesHelper;
 function createGridHelpers() {
     if (gridHelper) scene.remove(gridHelper);
     if (axesHelper) scene.remove(axesHelper);
-
     gridHelper = new THREE.GridHelper(gridSize, gridSize, 0x888888, 0x444444);
     gridHelper.position.y = -0.5;
     scene.add(gridHelper);
-
     axesHelper = new THREE.AxesHelper(gridSize / 4);
     scene.add(axesHelper);
-
     camera.position.set(gridSize / 2, gridSize / 2, gridSize * 2);
     camera.lookAt(gridSize / 2, 0, gridSize / 2);
 }
 
-// --- NUEVO: LÓGICA DEL CUBO FANTASMA (PREVISUALIZACIÓN) ---
+// --- LÓGICA DEL CUBO FANTASMA (PREVISUALIZACIÓN) ---
 let ghostCube;
 
 function createGhostCube() {
     const geometry = new THREE.BoxGeometry(1, 1, 1);
-    const material = new THREE.MeshBasicMaterial({
-        color: 0xffffff,
-        transparent: true,
-        opacity: 0.5,
-    });
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5 });
     ghostCube = new THREE.Mesh(geometry, material);
-    ghostCube.visible = false; // Empezará siendo invisible
+    ghostCube.visible = false;
     scene.add(ghostCube);
 }
 
 // --- PALETA DE COLORES ---
-const COLOR_PALETTE = [
-    0x00ff83, 0xff5733, 0x5733ff, 0xffff00, 0xff0057, 0x33aaff, 0xffd700, 0x8b4513,
-];
+const COLOR_PALETTE = [0x00ff83, 0xff5733, 0x5733ff, 0xffff00, 0xff0057, 0x33aaff, 0xffd700, 0x8b4513];
 const colorNames = ['Verde', 'Naranja', 'Morado', 'Amarillo', 'Rosa', 'Azul Claro', 'Dorado', 'Marrón'];
 const paletteDiv = document.getElementById('color-palette');
 let selectedColorIndex = 0;
-
 COLOR_PALETTE.forEach((color, index) => {
     const button = document.createElement('button');
-    button.style.width = '30px';
-    button.style.height = '30px';
-    button.style.border = '2px solid #444';
-    button.style.borderRadius = '50%';
-    button.style.backgroundColor = `#${color.toString(16).padStart(6, '0')}`;
-    button.style.cursor = 'pointer';
+    button.style.cssText = `width:30px; height:30px; border:2px solid #444; border-radius:50%; background-color:#${color.toString(16).padStart(6, '0')}; cursor:pointer;`;
     button.title = colorNames[index];
     button.addEventListener('click', () => {
         selectedColorIndex = index;
@@ -130,7 +115,7 @@ async function loadInitialGrid() {
             for (let z = 0; z < gridData[x][y].length; z++) {
                 const colorIndex = gridData[x][y][z];
                 if (colorIndex > 0) {
-                    addVoxel(x - gridSize / 2, y, z - gridSize / 2, colorIndex);
+                    addVoxel(x - gridSize / 2 + 0.5, y, z - gridSize / 2 + 0.5, colorIndex);
                 }
             }
         }
@@ -142,7 +127,7 @@ async function initializeGrid() {
     const gridData = await response.json();
     gridSize = gridData.length;
     createGridHelpers();
-    createGhostCube(); // <-- Llamamos a la función de creación
+    createGhostCube();
     loadInitialGrid();
 }
 
@@ -153,17 +138,23 @@ const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.5);
 
-function getVoxelPosition(event) {
+// *** MODIFICACIÓN 1: La función ahora acepta un parámetro para invertir la normal ***
+function getVoxelPosition(event, placeOnOppositeFace = false) {
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
     raycaster.setFromCamera(mouse, camera);
-
     const intersects = raycaster.intersectObjects(Array.from(voxels.values()).map(v => v.mesh));
-
     if (intersects.length > 0) {
         const hit = intersects[0];
-        const normal = hit.face.normal;
-        return hit.object.position.clone().add(normal);
+        const normal = hit.face.normal.clone();
+        
+        // Si se indica, usamos la cara opuesta (ej: para construir hacia abajo)
+        if (placeOnOppositeFace) {
+            return hit.object.position.clone().sub(normal);
+        } else {
+            return hit.object.position.clone().add(normal);
+        }
+
     } else {
         const intersection = new THREE.Vector3();
         if (raycaster.ray.intersectPlane(plane, intersection)) {
@@ -177,21 +168,14 @@ function getVoxelPosition(event) {
     return null;
 }
 
-// --- NUEVO: EVENTOS DE RATÓN Y TECLADO ACTUALIZADOS ---
-
 // Evento para mover el ratón (actualiza el cubo fantasma)
 window.addEventListener('mousemove', (event) => {
     if (!ghostCube) return;
-
-    if (event.shiftKey) { // Solo mostrar si Shift está presionado
-        const finalPosition = getVoxelPosition(event);
+    if (event.shiftKey) {
+        // *** MODIFICACIÓN 2: Pasamos el estado de la tecla Alt a la función ***
+        const finalPosition = getVoxelPosition(event, event.altKey);
         if (finalPosition) {
-            // Centramos la posición del cubo fantasma al grid
-             ghostCube.position.set(
-                Math.floor(finalPosition.x) + 0.5,
-                Math.floor(finalPosition.y),
-                Math.floor(finalPosition.z) + 0.5
-            );
+            ghostCube.position.copy(finalPosition);
             ghostCube.visible = true;
         } else {
             ghostCube.visible = false;
@@ -201,22 +185,21 @@ window.addEventListener('mousemove', (event) => {
     }
 });
 
-// Evento para cuando se deja de pulsar una tecla (para ocultar el fantasma si se suelta Shift)
+// Evento para cuando se deja de pulsar una tecla
 window.addEventListener('keyup', (event) => {
-    if (event.key === 'Shift') {
-        if (ghostCube) ghostCube.visible = false;
+    if (event.key === 'Shift' && ghostCube) {
+        ghostCube.visible = false;
     }
 });
 
-
-// Evento para el clic del ratón (añadir/eliminar)
+// Evento para el clic del ratón
 window.addEventListener('mousedown', async (event) => {
+    // La lógica de añadir (`Shift + Click`) ahora funciona automáticamente
+    // con la nueva posición del ghostCube, por lo que no necesita cambios.
     if (!event.shiftKey && !event.ctrlKey) return;
-
     const action = event.shiftKey ? 'add' : 'remove';
     let finalPosition;
 
-    // Lógica para eliminar
     if (action === 'remove') {
         mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
         mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -225,15 +208,14 @@ window.addEventListener('mousedown', async (event) => {
         if (intersects.length > 0) {
             finalPosition = intersects[0].object.position;
         }
-    } else { // Lógica para añadir
-        finalPosition = ghostCube.position; // Usamos la posición ya calculada del cubo fantasma
+    } else {
+        finalPosition = ghostCube.position;
     }
 
     if (finalPosition) {
         const backendX = Math.round(finalPosition.x + gridSize / 2 - 0.5);
         const backendY = Math.round(finalPosition.y);
         const backendZ = Math.round(finalPosition.z + gridSize / 2 - 0.5);
-
         const colorIndex = action === 'add' ? selectedColorIndex + 1 : 0;
 
         const response = await fetch('/api/update_voxel', {
@@ -241,13 +223,12 @@ window.addEventListener('mousedown', async (event) => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ x: backendX, y: backendY, z: backendZ, color_index: colorIndex }),
         });
-
         const result = await response.json();
-        if (result.status === 'success') {
-            const displayX = result.x - gridSize / 2;
-            const displayY = result.y;
-            const displayZ = result.z - gridSize / 2;
 
+        if (result.status === 'success') {
+            const displayX = result.x - gridSize / 2 + 0.5;
+            const displayY = result.y;
+            const displayZ = result.z - gridSize / 2 + 0.5;
             if (result.value > 0) {
                 addVoxel(displayX, displayY, displayZ, result.value);
             } else {
@@ -256,7 +237,6 @@ window.addEventListener('mousedown', async (event) => {
         }
     }
 });
-
 
 // --- CONTROL DE GRID SIZE ---
 document.getElementById('grid-size-select').addEventListener('change', async (e) => {
@@ -273,7 +253,6 @@ document.getElementById('grid-size-select').addEventListener('change', async (e)
         loadInitialGrid();
     }
 });
-
 document.getElementById('reset-grid-btn').addEventListener('click', async () => {
     const currentSize = parseInt(document.getElementById('grid-size-select').value);
     const response = await fetch('/api/set_grid_size', {
@@ -303,17 +282,16 @@ document.getElementById('save-btn').addEventListener('click', () => {
             projectData.grid[x][y] = new Array(gridSize).fill(0);
         }
     }
-    voxels.forEach((voxel, key) => {
-        const [x, y, z] = key.split(',').map(Number);
-        const gridX = Math.round(x + gridSize / 2);
-        const gridY = Math.round(y);
-        const gridZ = Math.round(z + gridSize / 2);
+    voxels.forEach((voxel) => {
+        const pos = voxel.mesh.position;
+        const gridX = Math.round(pos.x + gridSize / 2 - 0.5);
+        const gridY = Math.round(pos.y);
+        const gridZ = Math.round(pos.z + gridSize / 2 - 0.5);
         if (gridX >= 0 && gridX < gridSize && gridY >= 0 && gridY < gridSize && gridZ >= 0 && gridZ < gridSize) {
             projectData.grid[gridX][gridY][gridZ] = voxel.colorIndex;
         }
     });
-    const jsonStr = JSON.stringify(projectData, null, 2);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(projectData, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -324,11 +302,9 @@ document.getElementById('save-btn').addEventListener('click', () => {
     URL.revokeObjectURL(url);
     alert(`Proyecto guardado como: ${projectName}.json`);
 });
-
 document.getElementById('load-btn').addEventListener('click', () => {
     document.getElementById('file-input').click();
 });
-
 document.getElementById('file-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -351,7 +327,7 @@ document.getElementById('file-input').addEventListener('change', (e) => {
                     for (let z = 0; z < gridData[x][y].length; z++) {
                         const colorIndex = gridData[x][y][z];
                         if (colorIndex > 0) {
-                            addVoxel(x - gridSize / 2, y, z - gridSize / 2, colorIndex);
+                            addVoxel(x - gridSize / 2 + 0.5, y, z - gridSize / 2 + 0.5, colorIndex);
                         }
                     }
                 }
@@ -367,58 +343,37 @@ document.getElementById('file-input').addEventListener('change', (e) => {
     reader.readAsText(file);
 });
 
-// --- EXPORTAR A GLB/GLTF ---
+// --- EXPORTAR ---
 document.getElementById('export-gltf-btn').addEventListener('click', () => {
     const exporter = new GLTFExporter();
     const options = { binary: true };
     const exportGroup = new THREE.Group();
-    voxels.forEach(({ mesh }) => {
-        exportGroup.add(mesh.clone());
-    });
+    voxels.forEach(({ mesh }) => exportGroup.add(mesh.clone()));
     exporter.parse(exportGroup, (result) => {
-        if (result instanceof ArrayBuffer) {
-            saveArrayBuffer(result, 'escena-voxel.glb');
-        } else {
-            const output = JSON.stringify(result, null, 2);
-            saveString(output, 'escena-voxel.gltf');
-        }
+        saveArrayBuffer(result, 'escena-voxel.glb');
     }, (error) => {
         console.error('Ocurrió un error durante la exportación a GLTF:', error);
-        alert('No se pudo exportar el modelo.');
     }, options);
+});
+document.getElementById('export-btn').addEventListener('click', () => {
+    renderer.domElement.toBlob((blob) => {
+        saveString(URL.createObjectURL(blob), 'voxel-editor.png');
+    });
 });
 
 function saveString(text, filename) {
-    const blob = new Blob([text], { type: 'text/plain' });
-    const link = document.createElement('a');
-    link.style.display = 'none';
-    document.body.appendChild(link);
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
+    save(new Blob([text], { type: 'text/plain' }), filename);
 }
-
 function saveArrayBuffer(buffer, filename) {
-    const blob = new Blob([buffer], { type: 'application/octet-stream' });
+    save(new Blob([buffer], { type: 'application/octet-stream' }), filename);
+}
+function save(blob, filename) {
     const link = document.createElement('a');
-    link.style.display = 'none';
-    document.body.appendChild(link);
     link.href = URL.createObjectURL(blob);
     link.download = filename;
     link.click();
-    document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
 }
-
-// --- EXPORTAR A PNG ---
-document.getElementById('export-btn').addEventListener('click', () => {
-    const link = document.createElement('a');
-    link.download = 'voxel-editor.png';
-    link.href = renderer.domElement.toDataURL('image/png');
-    link.click();
-});
 
 // --- CICLO DE ANIMACIÓN Y RESIZE ---
 function animate() {
@@ -426,7 +381,6 @@ function animate() {
     controls.update();
     renderer.render(scene, camera);
 }
-
 window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
     camera.updateProjectionMatrix();
