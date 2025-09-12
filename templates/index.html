@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor de Vóxeles 3D</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div id="info">
+        <h1>Editor de Vóxeles 3D</h1>
+        <p><b>Click Izquierdo + Arrastrar:</b> Rotar Cámara</p>
+        <p><b>Rueda del Ratón:</b> Zoom</p>
+        <p><b>Click Derecho + Arrastrar:</b> Mover Cámara</p>
+        <p><b>Shift + Click Izquierdo:</b> Añadir Cubo</p>
+        <p><b>Ctrl + Click Izquierdo:</b> Eliminar Cubo</p>
+        <hr>
+
+        <!-- Selector de tamaño de grid -->
+        <h3>Tamaño del Grid</h3>
+        <select id="grid-size-select" style="margin: 10px 0; padding: 5px;">
+            <option value="8">8×8×8</option>
+            <option value="16" selected>16×16×16</option>
+            <option value="32">32×32×32</option>
+            <option value="64">64×64×64</option>
+        </select>
+        <button id="reset-grid-btn" style="margin: 5px 0; padding: 5px 10px;">🔄 Reiniciar Grid</button>
+
+        <!-- Paleta de colores -->
+        <h3>Paleta de Colores</h3>
+        <div id="color-palette" style="display: flex; gap: 5px; margin: 10px 0;">
+            <!-- Se rellena dinámicamente con JS -->
+        </div>
+        <p>Color seleccionado: <span id="selected-color">Verde</span></p>
+
+        <!-- Guardar con nombre -->
+        <h3>Guardar Proyecto</h3>
+        <input type="text" id="project-name-input" placeholder="Nombre del proyecto (ej: mi-castillo)"
+               style="width: 100%; padding: 8px; margin: 8px 0; border-radius: 4px; border: none; background: #333; color: white;">
+        <button id="save-btn" style="margin: 5px 0; padding: 8px 12px;">💾 Guardar</button>
+        <button id="load-btn" style="margin: 5px 0; padding: 8px 12px;">📂 Cargar</button>
+        <input type="file" id="file-input" accept=".json" style="display: none;">
+        <button id="export-btn" style="margin: 5px 0; padding: 8px 12px;">🖼️ Exportar PNG</button>
+	<button id="export-gltf-btn" style="margin: 5px 0; padding: 8px 12px;">🧊 Exportar GLB</button>
+    </div>
+    <div id="scene-container"></div>
+
+    <!-- Importmap CORREGIDO (sin espacios extra) -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.179.1/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.179.1/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module" src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

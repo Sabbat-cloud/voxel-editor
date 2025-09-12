@@ -1,0 +1,9 @@
+voxel-editor/
+├── app.py              # Aplicación principal de Flask
+├── static/
+│   ├── css/
+│   │   └── style.css   # Hoja de estilos
+│   └── js/
+│       └── main.js     # Lógica 3D con Three.js
+└── templates/
+    └── index.html      # La página web principal
