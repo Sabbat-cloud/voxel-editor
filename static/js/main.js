@@ -4,12 +4,12 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
 
 // --- CONFIGURACIÓN BÁSICA ---
-let gridSize = 16; // Tamaño actual del grid (se actualiza desde el backend)
+let gridSize = 16;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x2a3b4c);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(gridSize / 2, gridSize / 2, gridSize * 2); // Ajuste dinámico
+camera.position.set(gridSize / 2, gridSize / 2, gridSize * 2);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -33,7 +33,6 @@ scene.add(directionalLight);
 let gridHelper, axesHelper;
 
 function createGridHelpers() {
-    // Eliminar helpers anteriores si existen
     if (gridHelper) scene.remove(gridHelper);
     if (axesHelper) scene.remove(axesHelper);
 
@@ -44,28 +43,30 @@ function createGridHelpers() {
     axesHelper = new THREE.AxesHelper(gridSize / 4);
     scene.add(axesHelper);
 
-    // Ajustar cámara según tamaño
     camera.position.set(gridSize / 2, gridSize / 2, gridSize * 2);
     camera.lookAt(gridSize / 2, 0, gridSize / 2);
 }
 
-createGridHelpers();
+// --- NUEVO: LÓGICA DEL CUBO FANTASMA (PREVISUALIZACIÓN) ---
+let ghostCube;
+
+function createGhostCube() {
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.5,
+    });
+    ghostCube = new THREE.Mesh(geometry, material);
+    ghostCube.visible = false; // Empezará siendo invisible
+    scene.add(ghostCube);
+}
 
 // --- PALETA DE COLORES ---
 const COLOR_PALETTE = [
-    0x00ff83, // verde
-    0xff5733, // naranja
-    0x5733ff, // morado
-    0xffff00, // amarillo
-    0xff0057, // rosa
-    0x33aaff, // azul claro
-    0xffd700, // dorado
-    0x8b4513, // marrón
+    0x00ff83, 0xff5733, 0x5733ff, 0xffff00, 0xff0057, 0x33aaff, 0xffd700, 0x8b4513,
 ];
-
 const colorNames = ['Verde', 'Naranja', 'Morado', 'Amarillo', 'Rosa', 'Azul Claro', 'Dorado', 'Marrón'];
-
-// Crear botones de paleta
 const paletteDiv = document.getElementById('color-palette');
 let selectedColorIndex = 0;
 
@@ -86,13 +87,10 @@ COLOR_PALETTE.forEach((color, index) => {
     });
     paletteDiv.appendChild(button);
 });
-
-// Seleccionar el primero por defecto
 document.querySelectorAll('#color-palette button')[0].style.border = '2px solid white';
 
 // --- LÓGICA DE VÓXELES ---
 const voxels = new Map();
-
 const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
 
 function getCubeMaterial(colorIndex) {
@@ -104,7 +102,6 @@ function getCubeMaterial(colorIndex) {
 function addVoxel(x, y, z, colorIndex) {
     const material = getCubeMaterial(colorIndex);
     if (!material) return;
-
     const voxel = new THREE.Mesh(cubeGeometry, material);
     voxel.position.set(x, y, z);
     voxel.castShadow = true;
@@ -126,35 +123,26 @@ function removeVoxel(x, y, z) {
 async function loadInitialGrid() {
     const response = await fetch('/api/grid');
     const gridData = await response.json();
-
-    // Limpiar escena
+    voxels.forEach(({ mesh }) => scene.remove(mesh));
     voxels.clear();
-    scene.children = scene.children.filter(child => !child.isMesh || child !== gridHelper && child !== axesHelper);
-
-    // Re-crear vóxeles
     for (let x = 0; x < gridData.length; x++) {
         for (let y = 0; y < gridData[x].length; y++) {
             for (let z = 0; z < gridData[x][y].length; z++) {
                 const colorIndex = gridData[x][y][z];
                 if (colorIndex > 0) {
-                    addVoxel(
-                        x - gridSize / 2,
-                        y,
-                        z - gridSize / 2,
-                        colorIndex
-                    );
+                    addVoxel(x - gridSize / 2, y, z - gridSize / 2, colorIndex);
                 }
             }
         }
     }
 }
 
-// --- INICIALIZAR GRID DESDE EL SERVIDOR ---
 async function initializeGrid() {
     const response = await fetch('/api/grid');
     const gridData = await response.json();
-    gridSize = gridData.length; // Asumimos que es cuadrado y homogéneo
+    gridSize = gridData.length;
     createGridHelpers();
+    createGhostCube(); // <-- Llamamos a la función de creación
     loadInitialGrid();
 }
 
@@ -165,39 +153,80 @@ const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -0.5);
 
-window.addEventListener('mousedown', async (event) => {
-    if (!event.shiftKey && !event.ctrlKey) return;
-
+function getVoxelPosition(event) {
     mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
     mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
     raycaster.setFromCamera(mouse, camera);
-
-    const action = event.shiftKey ? 'add' : (event.ctrlKey ? 'remove' : null);
-    if (!action) return;
-
-    let finalPosition;
 
     const intersects = raycaster.intersectObjects(Array.from(voxels.values()).map(v => v.mesh));
 
     if (intersects.length > 0) {
         const hit = intersects[0];
-        const hitObject = hit.object;
-
-        if (action === 'add') {
-            const normal = hit.face.normal;
-            finalPosition = hitObject.position.clone().add(normal);
-        } else {
-            finalPosition = hitObject.position;
-        }
-    } else if (action === 'add') {
+        const normal = hit.face.normal;
+        return hit.object.position.clone().add(normal);
+    } else {
         const intersection = new THREE.Vector3();
-        raycaster.ray.intersectPlane(plane, intersection);
-        finalPosition = new THREE.Vector3(
-            Math.floor(intersection.x) + 0.5,
-            0,
-            Math.floor(intersection.z) + 0.5
-        );
+        if (raycaster.ray.intersectPlane(plane, intersection)) {
+            return new THREE.Vector3(
+                Math.round(intersection.x - 0.5) + 0.5,
+                0,
+                Math.round(intersection.z - 0.5) + 0.5
+            );
+        }
+    }
+    return null;
+}
+
+// --- NUEVO: EVENTOS DE RATÓN Y TECLADO ACTUALIZADOS ---
+
+// Evento para mover el ratón (actualiza el cubo fantasma)
+window.addEventListener('mousemove', (event) => {
+    if (!ghostCube) return;
+
+    if (event.shiftKey) { // Solo mostrar si Shift está presionado
+        const finalPosition = getVoxelPosition(event);
+        if (finalPosition) {
+            // Centramos la posición del cubo fantasma al grid
+             ghostCube.position.set(
+                Math.floor(finalPosition.x) + 0.5,
+                Math.floor(finalPosition.y),
+                Math.floor(finalPosition.z) + 0.5
+            );
+            ghostCube.visible = true;
+        } else {
+            ghostCube.visible = false;
+        }
+    } else {
+        ghostCube.visible = false;
+    }
+});
+
+// Evento para cuando se deja de pulsar una tecla (para ocultar el fantasma si se suelta Shift)
+window.addEventListener('keyup', (event) => {
+    if (event.key === 'Shift') {
+        if (ghostCube) ghostCube.visible = false;
+    }
+});
+
+
+// Evento para el clic del ratón (añadir/eliminar)
+window.addEventListener('mousedown', async (event) => {
+    if (!event.shiftKey && !event.ctrlKey) return;
+
+    const action = event.shiftKey ? 'add' : 'remove';
+    let finalPosition;
+
+    // Lógica para eliminar
+    if (action === 'remove') {
+        mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+        mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+        raycaster.setFromCamera(mouse, camera);
+        const intersects = raycaster.intersectObjects(Array.from(voxels.values()).map(v => v.mesh));
+        if (intersects.length > 0) {
+            finalPosition = intersects[0].object.position;
+        }
+    } else { // Lógica para añadir
+        finalPosition = ghostCube.position; // Usamos la posición ya calculada del cubo fantasma
     }
 
     if (finalPosition) {
@@ -214,7 +243,6 @@ window.addEventListener('mousedown', async (event) => {
         });
 
         const result = await response.json();
-
         if (result.status === 'success') {
             const displayX = result.x - gridSize / 2;
             const displayY = result.y;
@@ -228,6 +256,7 @@ window.addEventListener('mousedown', async (event) => {
         }
     }
 });
+
 
 // --- CONTROL DE GRID SIZE ---
 document.getElementById('grid-size-select').addEventListener('change', async (e) => {
@@ -260,55 +289,32 @@ document.getElementById('reset-grid-btn').addEventListener('click', async () => 
     }
 });
 
-// --- GUARDAR PROYECTO DIRECTAMENTE EN EL CLIENTE (sin servidor) ---
+// --- GUARDAR Y CARGAR ---
 document.getElementById('save-btn').addEventListener('click', () => {
     const projectName = document.getElementById('project-name-input').value.trim();
     if (!projectName) {
         alert("Por favor, ingresa un nombre para el proyecto.");
         return;
     }
-
-    // Construir el objeto completo del proyecto
-    const projectData = {
-        grid: [],
-        grid_size: gridSize,
-        palette: COLOR_PALETTE
-    };
-
-    // Llenar la cuadrícula 3D desde los vóxeles visibles
+    const projectData = { grid: [], grid_size: gridSize, palette: COLOR_PALETTE };
     for (let x = 0; x < gridSize; x++) {
         projectData.grid[x] = [];
         for (let y = 0; y < gridSize; y++) {
-            projectData.grid[x][y] = [];
-            for (let z = 0; z < gridSize; z++) {
-                projectData.grid[x][y][z] = 0; // inicializamos todo en 0
-            }
+            projectData.grid[x][y] = new Array(gridSize).fill(0);
         }
     }
-
-    // Rellenar con los vóxeles reales
     voxels.forEach((voxel, key) => {
         const [x, y, z] = key.split(',').map(Number);
-        // Convertir coordenadas de escena a índices de cuadrícula
         const gridX = Math.round(x + gridSize / 2);
         const gridY = Math.round(y);
         const gridZ = Math.round(z + gridSize / 2);
-
-        if (
-            gridX >= 0 && gridX < gridSize &&
-            gridY >= 0 && gridY < gridSize &&
-            gridZ >= 0 && gridZ < gridSize
-        ) {
+        if (gridX >= 0 && gridX < gridSize && gridY >= 0 && gridY < gridSize && gridZ >= 0 && gridZ < gridSize) {
             projectData.grid[gridX][gridY][gridZ] = voxel.colorIndex;
         }
     });
-
-    // Convertir a JSON y crear blob
     const jsonStr = JSON.stringify(projectData, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-
-    // Crear enlace de descarga con nombre personalizado
     const a = document.createElement('a');
     a.href = url;
     a.download = `${projectName}.json`;
@@ -316,9 +322,9 @@ document.getElementById('save-btn').addEventListener('click', () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-
     alert(`Proyecto guardado como: ${projectName}.json`);
 });
+
 document.getElementById('load-btn').addEventListener('click', () => {
     document.getElementById('file-input').click();
 });
@@ -326,103 +332,61 @@ document.getElementById('load-btn').addEventListener('click', () => {
 document.getElementById('file-input').addEventListener('change', (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
     const reader = new FileReader();
-
-    // Esta función se ejecuta cuando el archivo se ha leído
     reader.onload = (event) => {
         try {
             const data = JSON.parse(event.target.result);
-
-            // Validamos que el archivo tenga la estructura que esperamos
             if (!data.grid || typeof data.grid_size === 'undefined') {
                 alert('Error: El archivo JSON no parece ser un proyecto válido.');
                 return;
             }
-            
-            // --- USAMOS 'data' DIRECTAMENTE, SIN LLAMAR AL SERVIDOR ---
-
-            // 1. Actualizar el tamaño global y los helpers visuales
             gridSize = data.grid_size;
-            document.getElementById('grid-size-select').value = gridSize; // Actualiza el selector en la UI
+            document.getElementById('grid-size-select').value = gridSize;
             createGridHelpers();
-
-            // 2. Limpiar la escena de los vóxeles anteriores de forma segura
             voxels.forEach(({ mesh }) => scene.remove(mesh));
             voxels.clear();
-
-            // 3. Recrear los vóxeles desde los datos del archivo cargado
             const gridData = data.grid;
             for (let x = 0; x < gridData.length; x++) {
                 for (let y = 0; y < gridData[x].length; y++) {
                     for (let z = 0; z < gridData[x][y].length; z++) {
                         const colorIndex = gridData[x][y][z];
                         if (colorIndex > 0) {
-                            addVoxel(
-                                x - gridSize / 2, // Ajuste de coordenadas al centro de la escena
-                                y,
-                                z - gridSize / 2, // Ajuste de coordenadas al centro de la escena
-                                colorIndex
-                            );
+                            addVoxel(x - gridSize / 2, y, z - gridSize / 2, colorIndex);
                         }
                     }
                 }
             }
-            
             alert('Proyecto cargado correctamente.');
-
         } catch (error) {
             console.error("Error al procesar el archivo JSON:", error);
             alert('Hubo un error al leer o interpretar el archivo JSON.');
         } finally {
-            // Resetea el input para poder cargar el mismo archivo de nuevo si es necesario
             e.target.value = '';
         }
     };
-
-    // Leemos el archivo como texto
     reader.readAsText(file);
 });
+
 // --- EXPORTAR A GLB/GLTF ---
 document.getElementById('export-gltf-btn').addEventListener('click', () => {
-    // 1. Crear una instancia del exportador
     const exporter = new GLTFExporter();
-
-    // 2. Opciones de exportación. 'binary: true' genera un único archivo .glb
-    const options = {
-        binary: true // Genera .glb en lugar de .gltf + .bin
-    };
-
-    // 3. Para no exportar los helpers (grid, ejes), creamos un grupo
-    // temporal que contenga únicamente los vóxeles.
+    const options = { binary: true };
     const exportGroup = new THREE.Group();
     voxels.forEach(({ mesh }) => {
-        // Clonamos para no afectar a los objetos de la escena principal
-        exportGroup.add(mesh.clone()); 
+        exportGroup.add(mesh.clone());
     });
-
-    // 4. Iniciar el proceso de parseo
-    exporter.parse(
-        exportGroup, // El objeto a exportar
-        (result) => { // Función callback que se ejecuta al terminar
-            if (result instanceof ArrayBuffer) {
-                // Si es binario (glb), guardamos el ArrayBuffer
-                saveArrayBuffer(result, 'escena-voxel.glb');
-            } else {
-                // Si no fuera binario, guardamos el JSON (gltf)
-                const output = JSON.stringify(result, null, 2);
-                saveString(output, 'escena-voxel.gltf');
-            }
-        },
-        (error) => { // Función callback para errores
-            console.error('Ocurrió un error durante la exportación a GLTF:', error);
-            alert('No se pudo exportar el modelo.');
-        },
-        options
-    );
+    exporter.parse(exportGroup, (result) => {
+        if (result instanceof ArrayBuffer) {
+            saveArrayBuffer(result, 'escena-voxel.glb');
+        } else {
+            const output = JSON.stringify(result, null, 2);
+            saveString(output, 'escena-voxel.gltf');
+        }
+    }, (error) => {
+        console.error('Ocurrió un error durante la exportación a GLTF:', error);
+        alert('No se pudo exportar el modelo.');
+    }, options);
 });
-
-// --- Funciones auxiliares para guardar los archivos ---
 
 function saveString(text, filename) {
     const blob = new Blob([text], { type: 'text/plain' });
