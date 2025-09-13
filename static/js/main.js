@@ -11,7 +11,10 @@ scene.background = new THREE.Color(0x2a3b4c);
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(gridSize / 2, gridSize / 2, gridSize * 2);
 
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ 
+    antialias: true, 
+    preserveDrawingBuffer: true 
+});
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.shadowMap.enabled = true;
 document.getElementById('scene-container').appendChild(renderer.domElement);
@@ -356,10 +359,32 @@ document.getElementById('export-gltf-btn').addEventListener('click', () => {
     }, options);
 });
 document.getElementById('export-btn').addEventListener('click', () => {
+    // Forzar un renderizado del último fotograma para asegurar que el buffer esté actualizado
+    renderer.render(scene, camera); 
+    
+    // Usar toBlob que es asíncrono y más seguro
     renderer.domElement.toBlob((blob) => {
-        saveString(URL.createObjectURL(blob), 'voxel-editor.png');
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = 'voxel-editor.png';
+        link.href = url;
+        link.click();
+        URL.revokeObjectURL(url); // Limpiar el objeto URL
     });
 });
+function save(blob, filename) {
+    const link = document.createElement('a');
+    // Si ya existe, lo eliminamos para evitar duplicados
+    if (document.body.contains(link)) {
+        document.body.removeChild(link);
+    }
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+}
 
 function saveString(text, filename) {
     save(new Blob([text], { type: 'text/plain' }), filename);
@@ -367,14 +392,6 @@ function saveString(text, filename) {
 function saveArrayBuffer(buffer, filename) {
     save(new Blob([buffer], { type: 'application/octet-stream' }), filename);
 }
-function save(blob, filename) {
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    link.click();
-    URL.revokeObjectURL(link.href);
-}
-
 // --- CICLO DE ANIMACIÓN Y RESIZE ---
 function animate() {
     requestAnimationFrame(animate);
